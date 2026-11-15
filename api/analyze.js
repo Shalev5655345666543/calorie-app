@@ -18,10 +18,13 @@ module.exports = async (req, res) => {
       (note ? "מידע נוסף מהמשתמש: " + note + ". " : "") +
       'החזר JSON בלבד במבנה: {"name":"שם קצר בעברית","items":[{"name":"שם בעברית","grams":0,"calories":0,"protein":0,"carbs":0,"fat":0}]}. הערכים למנה כפי שמופיעה בתמונה.';
 
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 50000);
     const g = await fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent",
       {
         method: "POST",
+        signal: ctrl.signal,
         headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: mime || "image/jpeg", data: image } }] }],
@@ -29,11 +32,13 @@ module.exports = async (req, res) => {
         }),
       }
     );
+    clearTimeout(timer);
     const data = await g.json();
     if (!g.ok) return res.status(502).json({ error: (data.error && data.error.message) || "שגיאה מ-Gemini" });
     const text = data.candidates[0].content.parts[0].text;
     return res.status(200).json(JSON.parse(text));
   } catch (e) {
+    if (e.name === "AbortError") return res.status(504).json({ error: "הניתוח לקח יותר מדי זמן, נסה שוב" });
     return res.status(500).json({ error: "שגיאה בניתוח: " + e.message });
   }
 };
